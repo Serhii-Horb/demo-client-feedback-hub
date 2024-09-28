@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import javax.annotation.PostConstruct;
 import java.io.FileInputStream;
 import java.io.IOException;
 
@@ -16,14 +17,23 @@ public class FirebaseInitializer {
     @Value("${firebase.config.path}")
     private String firebaseConfigPath;
 
-    @Bean
-    public FirebaseApp firebaseApp() throws IOException {
-        FileInputStream serviceAccount = new FileInputStream(firebaseConfigPath);
-        FirebaseOptions options = new FirebaseOptions.Builder()
-                .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                .setDatabaseUrl("https://client-feedback-hub-default-rtdb.europe-west1.firebasedatabase.app/")
-                .build();
+    @PostConstruct
+    public void initialize() {
+        try {
+            FileInputStream serviceAccount =
+                    new FileInputStream(firebaseConfigPath);
 
-        return FirebaseApp.initializeApp(options);
+            FirebaseOptions options = new FirebaseOptions.Builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .setDatabaseUrl("https://client-feedback-hub-default-rtdb.europe-west1.firebasedatabase.app/")
+                    .build();
+
+            if (FirebaseApp.getApps().isEmpty()) {
+                FirebaseApp.initializeApp(options);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
+
