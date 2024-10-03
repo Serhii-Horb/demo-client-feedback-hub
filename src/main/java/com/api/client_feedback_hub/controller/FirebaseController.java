@@ -1,9 +1,12 @@
 package com.api.client_feedback_hub.controller;
 
 import com.api.client_feedback_hub.entity.User;
+import com.api.client_feedback_hub.entity.enums.Role;
 import com.api.client_feedback_hub.service.FirebaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,16 +37,21 @@ public class FirebaseController {
         return ResponseEntity.ok(user);
     }
 
-//    @PostMapping
-//    @ResponseStatus(HttpStatus.CREATED)
-//    @Operation(
-//            summary = "Creates a new user.",
-//            description = "Allows you to create a new user."
-//    )
-//    public ResponseEntity<CompletableFuture<User>> createUser(@RequestBody User user) {
-//        CompletableFuture<User> createdUser = firebaseService.saveUser(user);
-//        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
-//    }
+    @PostMapping("/users")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Creates a new user.",
+            description = "Allows you to create a new user."
+    )
+    public ResponseEntity<String> createUser(@RequestBody User user) {
+        try {
+            firebaseService.addUser(user.getEmail(), user.getName(), user.getPhoneNumber(), user.getRole(), user.getUserId());
+            return ResponseEntity.status(HttpStatus.CREATED).build();
+        } catch (Exception e) {
+            System.err.println("Error creating user: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 
 //    @PutMapping("/{userId}")
 //    @Operation(
@@ -58,26 +66,62 @@ public class FirebaseController {
 //        return ResponseEntity.ok(updatedUser);
 //    }
 
-    @DeleteMapping("/{userId}")
-    @Operation(
-            summary = "Deletes a user.",
-            description = "Allows you to delete a user by id."
-    )
-    public ResponseEntity<Void> deleteUser(@PathVariable Long userId) {
-        // Асинхронное выполнение операции удаления пользователя
-        CompletableFuture<Boolean> isDeletedFuture = firebaseService.deleteUser(userId);
+//    @PutMapping(value = "/{userId}")
+//    @ResponseStatus(HttpStatus.OK)
+//    @Operation(
+//            summary = "User update.",
+//            description = "Allows the user to update their data."
+//    )
+//    public ResponseEntity<User> updateUser(
+//            @PathVariable Long userId,
+//            @RequestBody User updatedUser
+//    ) {
+//        CompletableFuture<User> futureUser = new CompletableFuture<>();
+//
+//        // Обновление данных пользователя через сервис
+//        firebaseDatabaseService.getUser(userId, existingUser -> {
+//            if (existingUser != null) {
+//                // Обновляем данные пользователя
+//                existingUser.setEmail(updatedUser.getEmail());
+//                existingUser.setName(updatedUser.getName());
+//                existingUser.setPhoneNumber(updatedUser.getPhoneNumber());
+//                existingUser.setRole(updatedUser.getRole());
+//
+//                // Сохранение обновленного пользователя в базе данных
+//                firebaseDatabaseService.updateUser(userId, existingUser);
+//
+//                futureUser.complete(existingUser);
+//            } else {
+//                futureUser.completeExceptionally(new RuntimeException("User not found"));
+//            }
+//        });
 
-        // Ожидание завершения операции и обработка результата
-        try {
-            boolean isDeleted = isDeletedFuture.get(); // Получаем результат удаления
+        // Ждем завершения CompletableFuture и возвращаем обновленного пользователя
+//        try {
+//            User user = futureUser.get();
+//            return ResponseEntity.ok(user); // Возвращаем обновленного пользователя
+//        } catch (InterruptedException | ExecutionException e) {
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null); // Возвращаем 404, если ошибка
+//        }
+//    }
 
-            if (!isDeleted) {
-                return ResponseEntity.notFound().build(); // Возврат 404, если пользователь не найден для удаления
+    @DeleteMapping(value = "/{userId}")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Deletes the user.", description = "Allows you to delete a user profile.")
+    public ResponseEntity<String> deleteUserProfileById(@PathVariable @Valid @Min(1) Long userId) {
+        // Асинхронно удаляем пользователя и обрабатываем результат
+        CompletableFuture<Boolean> deletionResult = firebaseService.deleteUser(userId);
+
+        // Ожидаем результат и возвращаем соответствующий HTTP статус
+        return deletionResult.thenApply(deleted -> {
+            if (deleted) {
+                return ResponseEntity.ok("User deleted successfully.");
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to delete user.");
             }
-            return ResponseEntity.noContent().build(); // Возвращает статус 204 No Content при успешном удалении
-        } catch (InterruptedException | ExecutionException e) {
-            // Обработка исключений
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        }).exceptionally(e -> {
+            System.err.println("Error deleting user: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error deleting user: " + e.getMessage());
+        }).join();
     }
 }

@@ -1,53 +1,41 @@
 package com.api.client_feedback_hub.entity;
 
 import com.api.client_feedback_hub.entity.enums.Role;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Table(name = "users")
 @Entity
+@Table(name = "users")
 @Getter
 @Setter
-//@ToString(exclude = {"role", "cart", "favorites", "orders"})
-//@EqualsAndHashCode(exclude = {"role", "cart", "favorites", "orders"})
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
 public class User {
 
-    /**
-     * Email address of the user.
-     * This field must be unique and cannot be null.
-     */
+    @JsonProperty("Email")
     @Column(name = "Email", unique = true, nullable = false)
     private String email;
 
-    /**
-     * Name of the user.
-     * This field cannot be null.
-     */
+    @JsonProperty("Name")
     @Column(name = "Name", nullable = false)
     private String name;
 
-    /**
-     * Phone number of the user.
-     */
+    @JsonProperty("PhoneNumber")
     @Column(name = "PhoneNumber")
     private String phoneNumber;
 
-    /**
-     * Role of the user.
-     * This field cannot be null.
-     * The role is represented as a string in the database.
-     */
+    @JsonProperty("Role")
     @Enumerated(EnumType.STRING)
     @Column(name = "Role", nullable = false)
     private Role role;
 
-    /**
-     * Unique identifier for the user.
-     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "UserID")
+    @JsonProperty("UserID")
     private Long userId;
 }
