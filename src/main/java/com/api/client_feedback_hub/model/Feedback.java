@@ -15,6 +15,6 @@ public class Feedback {
     private String reviewerId;
     private String recipientId;
     private String feedbackText;
-    private int rating;
+    private int grade;
     private Long timestamp;
 }

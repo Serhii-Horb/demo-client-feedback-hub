@@ -1,11 +1,15 @@
 package com.api.client_feedback_hub.service;
 
-import com.api.client_feedback_hub.mapper.UserRegisterDto;
+import com.api.client_feedback_hub.dto.UserRequestDto;
+import com.api.client_feedback_hub.dto.UserResponseDto;
+import com.api.client_feedback_hub.mapper.UserMapper;
 import com.api.client_feedback_hub.model.User;
 import com.google.firebase.database.*;
 import lombok.RequiredArgsConstructor;
+import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -15,25 +19,29 @@ import java.util.concurrent.CompletableFuture;
 @Service
 @RequiredArgsConstructor
 public class UserService {
+    @Autowired
+    UserMapper userMapper;
+
+    private static final String DEFAULT_ROLE = "USER";
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
-    public CompletableFuture<List<User>> getAllUsers() {
+    public CompletableFuture<List<UserResponseDto>> getAllUsers() {
         DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
-        List<User> userList = new ArrayList<>();
-        CompletableFuture<List<User>> futureUsers = new CompletableFuture<>();
+        List<UserResponseDto> userList = new ArrayList<>();
+        CompletableFuture<List<UserResponseDto>> futureUsers = new CompletableFuture<>();
 
-        logger.info("Starting to fetch all users from Firebase Database");
+        logger.info("Starting to fetch all users from database");
         ref.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
-                logger.info("DataSnapshot received from Firebase");
+                logger.info("DataSnapshot received from database");
                 if (dataSnapshot.exists()) {
                     logger.info("Data found, processing users...");
                     // Iterate through each child in the snapshot
                     dataSnapshot.getChildren().forEach(snapshot -> {
                         User user = snapshot.getValue(User.class);
                         if (user != null) {
-                            userList.add(user);
+                            userList.add(userMapper.convertToDto(user));
                             logger.info("User added: {}", user.getUserId());
                         } else {
                             logger.warn("Failed to parse data as User object");
@@ -58,12 +66,12 @@ public class UserService {
         return futureUsers;
     }
 
-    public CompletableFuture<User> getUserById(String id) {
+    public CompletableFuture<UserResponseDto> getUserById(Long id) {
         DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
-        CompletableFuture<User> future = new CompletableFuture<>();
+        CompletableFuture<UserResponseDto> future = new CompletableFuture<>();
 
         // Check if the user exists in the database
-        ref.child(id).addListenerForSingleValueEvent(new ValueEventListener() {
+        ref.child(String.valueOf(id)).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
@@ -71,11 +79,116 @@ public class UserService {
                     User user = dataSnapshot.getValue(User.class);
                     if (user != null) {
                         // Complete the future with the user data
-                        future.complete(user);
+                        future.complete(userMapper.convertToDto(user));
                     } else {
                         // Complete exceptionally if parsing fails
-                        future.completeExceptionally(new RuntimeException("Failed to parse user data"));
+                        future.completeExceptionally(new RuntimeException("User data found but failed to parse it"));
                     }
+                } else {
+                    // User does not exist, complete future exceptionally
+                    logger.warn("No user found with ID: {}", id);
+                    future.completeExceptionally(new RuntimeException("No user found with the provided ID: " + id));
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                logger.error("Database error occurred while retrieving user with ID {}: {}", id, databaseError.getMessage());
+                // Complete exceptionally on cancellation
+                future.completeExceptionally(new RuntimeException("Error occurred while accessing the database for user ID: " + id));
+            }
+        });
+
+        return future;
+    }
+
+    public CompletableFuture<String> createUser(UserRequestDto userRegisterDto) {
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
+        DatabaseReference counterRef = FirebaseDatabase.getInstance().getReference("userIdCounter");
+        CompletableFuture<String> future = new CompletableFuture<>();
+
+        // Retrieve the current user ID from the counter
+        counterRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                Long currentId = dataSnapshot.getValue(Long.class);
+                if (currentId == null) {
+                    currentId = 0L; // Start with 0 if no ID exists
+                }
+                Long uniqueUserId = currentId + 1; // Increment the ID
+
+                // Hash the password
+                String hashedPassword = BCrypt.hashpw(userRegisterDto.getPassword(), BCrypt.gensalt());
+
+                // Create a new user
+                User newUser = new User(uniqueUserId, userRegisterDto.getEmail(), userRegisterDto.getName(),
+                        userRegisterDto.getPhoneNumber(), DEFAULT_ROLE, hashedPassword, 0.0, 0);
+
+                // Save the user in the database
+                ref.child(String.valueOf(uniqueUserId)).setValue(newUser, new DatabaseReference.CompletionListener() {
+                    @Override
+                    public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
+                        if (databaseError != null) {
+                            logger.error("Failed to save user: {}", databaseError.getMessage());
+                            // Complete the future exceptionally to signal the error
+                            future.completeExceptionally(new RuntimeException("User creation failed: " + databaseError.getMessage()));
+                        } else {
+                            logger.info("User saved successfully");
+                            // Update the counter with the new ID
+                            counterRef.setValue(uniqueUserId, new DatabaseReference.CompletionListener() {
+                                @Override
+                                public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
+                                    if (databaseError != null) {
+                                        logger.error("Failed to update user ID counter: {}", databaseError.getMessage());
+                                    }
+                                }
+                            });
+                            // Complete the future with a success response
+                            future.complete("User created with ID: " + uniqueUserId);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                // Complete the future exceptionally if the read operation is cancelled
+                future.completeExceptionally(new RuntimeException("Failed to read user ID counter: " + databaseError.getMessage()));
+            }
+        });
+        return future;
+    }
+
+    public CompletableFuture<String> updateUser(Long id, UserRequestDto userRequestDto) {
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
+        CompletableFuture<String> future = new CompletableFuture<>();
+
+        // Check if the user exists in the database
+        ref.child(String.valueOf(id)).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                if (dataSnapshot.exists()) {
+                    String hashedPassword = BCrypt.hashpw(userRequestDto.getPassword(), BCrypt.gensalt());
+                    // User exists, update the existing user data
+                    User user = dataSnapshot.getValue(User.class);
+                    user.setEmail(userRequestDto.getEmail());
+                    user.setName(userRequestDto.getName());
+                    user.setPhoneNumber(userRequestDto.getPhoneNumber());
+                    user.setHashedPassword(hashedPassword);
+                    ref.child(String.valueOf(id)).setValue(user, new DatabaseReference.CompletionListener() {
+                        @Override
+                        public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
+                            if (databaseError != null) {
+                                logger.error("Failed to update user: {}", databaseError.getMessage());
+                                // Complete the future exceptionally to signal the error
+                                future.completeExceptionally(new RuntimeException("User update failed: " + databaseError.getMessage()));
+                            } else {
+                                logger.info("User updated successfully");
+                                // Complete the future with a success response
+                                future.complete(String.valueOf(id));
+                            }
+                        }
+                    });
                 } else {
                     // User does not exist, complete future exceptionally
                     logger.warn("User with ID: {} does not exist", id);
@@ -86,92 +199,47 @@ public class UserService {
             @Override
             public void onCancelled(DatabaseError databaseError) {
                 logger.error("Failed to check user existence: {}", databaseError.getMessage());
-                // Complete exceptionally on cancellation
                 future.completeExceptionally(new RuntimeException("Failed to check user existence"));
             }
         });
-
         return future;
     }
 
-
-    public CompletableFuture<String> createUser(User user) {
+    public CompletableFuture<Void> deleteUser(Long id) {
         DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
-        CompletableFuture<String> future = new CompletableFuture<>();
-        ref.child(user.getUserId()).setValue(user, new DatabaseReference.CompletionListener() {
-            @Override
-            public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
-                if (databaseError != null) {
-                    logger.error("Failed to save user: {}", databaseError.getMessage());
-                    // Complete the future exceptionally to signal the error
-                    future.completeExceptionally(new RuntimeException("User creation failed: " + databaseError.getMessage()));
-                } else {
-                    logger.info("User saved successfully");
-                    // Complete the future with a success response
-                    future.complete("User created with ID: " + user.getUserId());
-                }
-            }
-        });
-        return future;
-    }
+        CompletableFuture<Void> future = new CompletableFuture<>();
 
-    public CompletableFuture<String> updateUser(String id, UserRegisterDto userRegisterDto) {
-
-        User user = new User(id, userRegisterDto.getEmail(), userRegisterDto.getName(), userRegisterDto.getPhoneNumber(), DEFAULT_ROLE, hashedPassword);
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users");
-        CompletableFuture<String> future = new CompletableFuture<>();
         // Check if the user exists in the database
-        ref.child(user.getUserId()).addListenerForSingleValueEvent(new ValueEventListener() {
+        ref.child(String.valueOf(id)).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
-                    // User exists, update the existing user data
-                    ref.child(user.getUserId()).setValue(user, new DatabaseReference.CompletionListener() {
+                    ref.removeValue(new DatabaseReference.CompletionListener() {
                         @Override
                         public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
                             if (databaseError != null) {
-                                logger.error("Failed to update user: {}", databaseError.getMessage());
-                                // Complete the future exceptionally to signal the error
-                                future.completeExceptionally(new RuntimeException("User update failed: " + databaseError.getMessage()));
+                                logger.error("Failed to delete user with ID: {}. Error: {}", id, databaseError.getMessage());
+                                // Complete the future exceptionally
+                                future.completeExceptionally(new RuntimeException("Failed to delete user with ID: " + id + ". Error: " + databaseError.getMessage()));
                             } else {
-                                logger.info("User updated successfully");
-                                // Complete the future with a success response
-                                future.complete(user.getUserId());
+                                logger.info("User with ID: {} was deleted successfully.", id);
+                                // Complete the future normally
+                                future.complete(null);
                             }
                         }
                     });
                 } else {
-                    // User does not exist, complete future exceptionally
-                    logger.warn("User with ID: {} does not exist", user.getUserId());
-                    future.completeExceptionally(new RuntimeException("User not found: " + user.getUserId()));
+                    logger.warn("User with ID: {} does not exist.", id);
+                    // Complete the future exceptionally if the user does not exist
+                    future.completeExceptionally(new RuntimeException("User with ID: " + id + " does not exist."));
                 }
             }
 
             @Override
             public void onCancelled(DatabaseError databaseError) {
-                logger.error("Failed to check user existence: {}", databaseError.getMessage());
-                future.completeExceptionally(new RuntimeException("Failed to check user existence"));
-            }
-        });
-
-        return future;
-    }
-
-    public CompletableFuture<Void> deleteUser(String userId) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users").child(userId);
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        ref.removeValue(new DatabaseReference.CompletionListener() {
-            @Override
-            public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
-                if (databaseError != null) {
-                    logger.error("Failed to delete user with ID: {}. Error: {}", userId, databaseError.getMessage());
-                    // Complete the future exceptionally
-                    future.completeExceptionally(new RuntimeException("Failed to delete user with ID: " + userId + ". Error: " + databaseError.getMessage()));
-                } else {
-                    logger.info("User with ID: {} was deleted successfully.", userId);
-                    // Complete the future normally
-                    future.complete(null);
-                }
+                logger.error("Error checking for user with ID: {}. Error: {}", id, databaseError.getMessage());
+                // Complete the future exceptionally on operation cancellation
+                future.completeExceptionally(new RuntimeException("Error checking for user with ID: " + id + ". Error: " + databaseError.getMessage()));
             }
         });
         return future;

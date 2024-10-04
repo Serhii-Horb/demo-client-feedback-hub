@@ -13,13 +13,14 @@ public class User {
 
     //    @Id
 //    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private String userId;
+    private Long userId;
     private String email;
     private String name;
     private String phoneNumber;
     private String role;
     private String hashedPassword;
-    Double averageRating;
+    private Double averageRating;
+    private int numberReviewers;
 
     public User(String email, String name, String phoneNumber, String hashedPassword) {
         this.email = email;

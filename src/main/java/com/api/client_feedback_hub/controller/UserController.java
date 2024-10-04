@@ -1,17 +1,13 @@
-package com.api.client_feedback_hub.controller.advice;
+package com.api.client_feedback_hub.controller;
 
-import com.api.client_feedback_hub.mapper.FeedbackRequestDto;
-import com.api.client_feedback_hub.mapper.UserRegisterDto;
-import com.api.client_feedback_hub.model.Feedback;
-import com.api.client_feedback_hub.model.User;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
+import com.api.client_feedback_hub.dto.UserRequestDto;
+import com.api.client_feedback_hub.dto.UserResponseDto;
+import com.api.client_feedback_hub.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,11 +16,12 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/users")
-public class FeedbackController {
+public class UserController {
     @Autowired
-    private FeedbackService feedbackService;
+    private UserService userService;
 
-    private static final Logger logger = LoggerFactory.getLogger(FeedbackService.class);
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+
 
 //    @PostMapping("/register")
 //    public ResponseEntity<String> registerUser(@RequestBody UserRegisterDto userRegisterDto) {
@@ -105,13 +102,27 @@ public class FeedbackController {
 //        return ResponseEntity.ok("User profile for UID: " + uid);
 //    }
 //
+    @GetMapping("/{id}")
+    public CompletableFuture<ResponseEntity<UserResponseDto>> getUserById(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .thenApply(user -> ResponseEntity.ok(user))
+                .exceptionally(ex -> {
+                    logger.error("Error retrieving user: {}", ex.getMessage());
+                    // Check if the error message indicates the user was not found
+                    if (ex.getMessage().contains("No user found with the provided ID")) {
+                        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                .body(null);
+                    } else {
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body(null);
+                    }
+                });
+    }
+
     @PostMapping
-    public CompletableFuture<ResponseEntity<String>> createFeedback(@RequestBody FeedbackRequestDto feedbackRequestDto) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("feedbacks");
-        String feedbackId = ref.push().getKey();
-        Feedback newFeedback = new Feedback(uniqueFeedbackId, feedbackRequestDto.getReviewerId(), feedbackRequestDto.getRecipientId(), feedbackRequestDto.getFeedbackText(), feedbackRequestDto.getRating(), System.currentTimeMillis());
-        return feedbackService.createFeedback(newFeedback)
-                .thenApply(userId -> ResponseEntity.ok("Feedback created successfully with ID: " + feedbackId)
+    public CompletableFuture<ResponseEntity<String>> createUser(@RequestBody UserRequestDto userRegisterDto) {
+        return userService.createUser(userRegisterDto)
+                .thenApply(userId -> ResponseEntity.ok("User created successfully with ID: " + userId))
                 .exceptionally(ex -> {
                     // Log the error
                     logger.error("Error creating user: {}", ex.getMessage());
@@ -121,11 +132,8 @@ public class FeedbackController {
     }
 
     @PutMapping("/{id}")
-    public CompletableFuture<ResponseEntity<String>> updateUser(@PathVariable String id, @RequestBody UserRegisterDto userRegisterDto) {
-        String hashedPassword = BCrypt.hashpw(userRegisterDto.getPassword(), BCrypt.gensalt());
-        User user = new User(id, userRegisterDto.getEmail(), userRegisterDto.getName(), userRegisterDto.getPhoneNumber(), DEFAULT_ROLE, hashedPassword);
-
-        return userService.updateUser(user)
+    public CompletableFuture<ResponseEntity<String>> updateUser(@PathVariable Long id, @RequestBody UserRequestDto userRegisterDto) {
+        return userService.updateUser(id, userRegisterDto)
                 .thenApply(userId -> ResponseEntity.ok("User updated successfully with ID: " + userId))
                 .exceptionally(ex -> {
                     // Log the error
@@ -136,7 +144,7 @@ public class FeedbackController {
     }
 
     @GetMapping
-    public CompletableFuture<ResponseEntity<List<User>>> getAllUsers() {
+    public CompletableFuture<ResponseEntity<List<UserResponseDto>>> getAllUsers() {
         return userService.getAllUsers()
                 .thenApply(users -> ResponseEntity.ok(users))
                 .exceptionally(e -> {
@@ -147,7 +155,7 @@ public class FeedbackController {
     }
 
     @DeleteMapping("/{id}")
-    public CompletableFuture<ResponseEntity<String>> deleteUser(@PathVariable String id) {
+    public CompletableFuture<ResponseEntity<String>> deleteUser(@PathVariable Long id) {
         return userService.deleteUser(id)
                 .thenApply(result -> ResponseEntity.ok("User deletion requested for ID: " + id))
                 .exceptionally(e -> {

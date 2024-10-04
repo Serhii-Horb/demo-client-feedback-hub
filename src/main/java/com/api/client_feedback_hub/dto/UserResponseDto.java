@@ -1,4 +1,4 @@
-package com.api.client_feedback_hub.mapper;
+package com.api.client_feedback_hub.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -9,9 +9,12 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserRegisterDto {
+public class UserResponseDto {
+    private Long userId;
     private String email;
     private String password;
     private String name;
     private String phoneNumber;
+    private Double averageRating;
+    private int numberReviewers;
 }

@@ -1,4 +1,4 @@
-package com.api.client_feedback_hub.mapper;
+package com.api.client_feedback_hub.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -12,7 +12,7 @@ import lombok.Setter;
 public class FeedbackResponseDto {
     private String feedbackId;
     private String reviewerId;
-    private int rating;
-    private String comment;
-    private Long createdAt;
+    private String recipientId;
+    private String feedbackText;
+    private int grade;
 }
