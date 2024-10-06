@@ -1,29 +1,38 @@
-package com.api.client_feedback_hub.controller.advice;
+package com.api.client_feedback_hub.controller;
 
 import com.api.client_feedback_hub.exceptions.AuthorizationException;
 import com.api.client_feedback_hub.exceptions.BadRequestException;
-import com.api.client_feedback_hub.exceptions.NoUsersFoundException;
-import com.api.client_feedback_hub.exceptions.NotFoundInDbException;
 import org.modelmapper.spi.ErrorMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @RestControllerAdvice
 public class AdviceController {
+
     /**
-     * Handles exceptions of type {@link NotFoundInDbException}.
-     * Returns a 404 Not Found status with an error message.
+     * Handles MethodArgumentNotValidException.
+     * Returns a 400 Bad Request status with validation error messages.
      *
-     * @param exception the thrown {@link NotFoundInDbException}
-     * @return a {@link ResponseEntity} with status 404 and an {@link ErrorMessage}
+     * @param ex the thrown MethodArgumentNotValidException
+     * @return a ResponseEntity with status 400 and a map of error messages
      */
-    @ExceptionHandler(NotFoundInDbException.class)
-    public ResponseEntity<ErrorMessage> handleException(NotFoundInDbException exception) {
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(new ErrorMessage(exception.getMessage()));
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+
+        ex.getBindingResult().getFieldErrors().forEach(fieldError -> {
+            String fieldName = fieldError.getField();
+            String errorMessage = fieldError.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
+        });
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
     }
 
     /**
@@ -54,17 +63,10 @@ public class AdviceController {
                 .body(new ErrorMessage(exception.getMessage()));
     }
 
-    /**
-     * Handles exceptions of type {@link NoUsersFoundException}.
-     * Returns a 400 Bad Request status with an error message.
-     *
-     * @param exception the thrown {@link NoUsersFoundException}
-     * @return a {@link ResponseEntity} with status 400 and an {@link ErrorMessage}
-     */
-    @ExceptionHandler(NoUsersFoundException.class)
-    public ResponseEntity<ErrorMessage> handleException(NoUsersFoundException exception) {
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorMessage> handleException(RuntimeException exception) {
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+                .status(HttpStatus.NOT_FOUND)
                 .body(new ErrorMessage(exception.getMessage()));
     }
 }
