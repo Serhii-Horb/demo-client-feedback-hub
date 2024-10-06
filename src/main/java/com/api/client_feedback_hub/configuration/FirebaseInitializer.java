@@ -28,6 +28,7 @@ public class FirebaseInitializer {
 
         return FirebaseApp.initializeApp(options);
     }
+
     @Bean
     public DatabaseReference databaseReference() {
         return FirebaseDatabase.getInstance().getReference("users");
