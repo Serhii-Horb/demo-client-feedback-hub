@@ -1,4 +1,4 @@
-package com.api.client_feedback_hub.entity.enums;
+package com.api.client_feedback_hub.enums;
 
 public enum Role {
     /**

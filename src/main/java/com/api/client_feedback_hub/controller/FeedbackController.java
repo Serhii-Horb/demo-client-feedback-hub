@@ -52,6 +52,6 @@ public class FeedbackController {
     @DeleteMapping("/{id}")
     public CompletableFuture<ResponseEntity<String>> deleteFeedback(@PathVariable String id) {
         return feedbackService.deleteFeedbackById(id)
-                .thenApply(result -> ResponseEntity.ok("Feedback deletion requested for ID: " + id));
+                .thenApply(result -> ResponseEntity.ok("Feedback deleted successfully with ID: " + id));
     }
 }

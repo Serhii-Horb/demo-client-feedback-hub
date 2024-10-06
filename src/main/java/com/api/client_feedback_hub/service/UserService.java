@@ -52,7 +52,6 @@ public class UserService {
                         }
                     });
                     // Complete the future with the list of users
-                    logger.info("No data found, returning an empty list");
                     futureUsers.complete(userList);
                 } else {
                     // Complete the future with no data
@@ -201,7 +200,7 @@ public class UserService {
     }
 
     public CompletableFuture<Void> deleteUser(Long id) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users").child(String.valueOf(id)); // Ссылка на конкретного пользователя
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("users").child(String.valueOf(id));
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         // Check if the user exists in the database
